@@ -5,29 +5,44 @@ on:
     branches: [master]
     paths:
       - 'urls.txt'
+      - 'resolve_piped.py'
+      - 'transcribe.py'
       - '.github/workflows/transcribe-one.yml'
   workflow_dispatch:
 
 jobs:
   transcribe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - name: Checkout worker
         uses: actions/checkout@v4
 
-      - name: Fetch hosted transcript for verified mirror
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install transcription dependencies
         run: |
-          mkdir -p results
-          curl -fL --retry 2 --connect-timeout 15 --max-time 60 \
-            'https://youtube-transcript.ai/transcript/8mQEzS-DXuE.txt' \
-            -o results/8mQEzS-DXuE.md
-          test -s results/8mQEzS-DXuE.md
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install faster-whisper
+
+      - name: Fetch proxied audio from verified mirror
+        run: |
+          mkdir -p work results
+          python resolve_piped.py
+          find work -type f -maxdepth 2 -printf '%p %s bytes\n'
+
+      - name: Transcribe audio
+        run: python transcribe.py
 
       - name: Preview transcript
         run: |
           echo '===== TRANSCRIPT PREVIEW ====='
-          sed -n '1,120p' results/8mQEzS-DXuE.md
+          sed -n '1,120p' results/*.md
 
       - name: Upload transcript artifact
         uses: actions/upload-artifact@v4
