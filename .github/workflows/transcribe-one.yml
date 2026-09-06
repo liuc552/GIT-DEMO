@@ -1,4 +1,4 @@
-name: Transcribe One Video
+name: Transcribe One Zhezhi Video
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout
+      - name: Checkout worker
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -22,31 +22,33 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          python -m pip install --upgrade pip
-          pip install yt-dlp faster-whisper
 
-      - name: Download first public video
+      - name: Install Python dependencies and Chromium
         run: |
-          mkdir -p work results
-          URL=$(head -n 1 urls.txt)
-          echo "Downloading: $URL"
-          yt-dlp --no-playlist --write-info-json -x --audio-format mp3 -o 'work/%(id)s.%(ext)s' "$URL"
+          python -m pip install --upgrade pip
+          pip install playwright faster-whisper 'mcp>=1.0' 'yt-dlp>=2026.6.9'
+          python -m playwright install --with-deps chromium
 
-      - name: Transcribe
+      - name: Fetch specialized Douyin acquisition code
+        run: |
+          mkdir -p vendor
+          git clone --depth 1 https://github.com/ZY-ZhichaoYu/douyin-transcribe.git vendor/douyin-transcribe
+
+      - name: Download and transcribe one sample
         run: python transcribe.py
 
-      - name: Show result preview
+      - name: Preview transcript
         run: |
-          echo '===== Markdown preview ====='
-          cat results/*.md | head -n 80
+          echo '===== TRANSCRIPT PREVIEW ====='
+          sed -n '1,100p' results/*.md
 
       - name: Upload transcript artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zhezhi-sample-transcript
+          name: zhezhi-one-sample
           path: results/
           retention-days: 7
