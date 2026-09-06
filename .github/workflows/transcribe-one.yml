@@ -1,0 +1,52 @@
+name: Transcribe One Video
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'urls.txt'
+      - 'transcribe.py'
+      - '.github/workflows/transcribe-one.yml'
+  workflow_dispatch:
+
+jobs:
+  transcribe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install yt-dlp faster-whisper
+
+      - name: Download first public video
+        run: |
+          mkdir -p work results
+          URL=$(head -n 1 urls.txt)
+          echo "Downloading: $URL"
+          yt-dlp --no-playlist --write-info-json -x --audio-format mp3 -o 'work/%(id)s.%(ext)s' "$URL"
+
+      - name: Transcribe
+        run: python transcribe.py
+
+      - name: Show result preview
+        run: |
+          echo '===== Markdown preview ====='
+          cat results/*.md | head -n 80
+
+      - name: Upload transcript artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhezhi-sample-transcript
+          path: results/
+          retention-days: 7
