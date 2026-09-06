@@ -22,29 +22,28 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-
-      - name: Install Python dependencies and Chromium
-        run: |
           python -m pip install --upgrade pip
-          pip install playwright faster-whisper 'mcp>=1,<2' 'yt-dlp>=2026.6.9'
-          python -m playwright install --with-deps chromium
+          pip install f2 faster-whisper
 
-      - name: Fetch specialized Douyin acquisition code
+      - name: Download one public Douyin video with F2
         run: |
-          mkdir -p vendor
-          git clone --depth 1 https://github.com/ZY-ZhichaoYu/douyin-transcribe.git vendor/douyin-transcribe
+          mkdir -p work results
+          URL=$(grep -v '^#' urls.txt | sed '/^$/d' | head -n 1)
+          echo "Downloading with F2: $URL"
+          f2 dy -u "$URL" -M one -p work -n '{aweme_id}'
+          find work -type f -maxdepth 4 -printf '%p %s bytes\n' || true
 
-      - name: Download and transcribe one sample
+      - name: Transcribe
         run: python transcribe.py
 
       - name: Preview transcript
         run: |
           echo '===== TRANSCRIPT PREVIEW ====='
-          sed -n '1,100p' results/*.md
+          sed -n '1,120p' results/*.md
 
       - name: Upload transcript artifact
         uses: actions/upload-artifact@v4
