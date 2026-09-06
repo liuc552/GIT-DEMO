@@ -30,7 +30,7 @@ jobs:
       - name: Install Python dependencies and Chromium
         run: |
           python -m pip install --upgrade pip
-          pip install playwright faster-whisper 'mcp>=1.0' 'yt-dlp>=2026.6.9'
+          pip install playwright faster-whisper 'mcp>=1,<2' 'yt-dlp>=2026.6.9'
           python -m playwright install --with-deps chromium
 
       - name: Fetch specialized Douyin acquisition code
