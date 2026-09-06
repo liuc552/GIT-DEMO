@@ -5,15 +5,14 @@ on:
     branches: [master]
     paths:
       - 'urls.txt'
-      - 'resolve_media.py'
-      - 'transcribe.py'
+      - 'fetch_youtube_transcript.py'
       - '.github/workflows/transcribe-one.yml'
   workflow_dispatch:
 
 jobs:
   transcribe:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - name: Checkout worker
         uses: actions/checkout@v4
@@ -23,21 +22,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          python -m pip install --upgrade pip
-          pip install faster-whisper
+      - name: Install transcript client
+        run: pip install youtube-transcript-api
 
-      - name: Resolve and download one public Douyin video
+      - name: Fetch transcript from verified YouTube mirror
         run: |
-          mkdir -p work results
-          python resolve_media.py
-          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 work/source.mp4
-
-      - name: Transcribe
-        run: python transcribe.py
+          mkdir -p results
+          python fetch_youtube_transcript.py
 
       - name: Preview transcript
         run: |
