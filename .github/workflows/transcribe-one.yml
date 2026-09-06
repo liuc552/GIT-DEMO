@@ -5,35 +5,29 @@ on:
     branches: [master]
     paths:
       - 'urls.txt'
-      - 'fetch_youtube_transcript.py'
       - '.github/workflows/transcribe-one.yml'
   workflow_dispatch:
 
 jobs:
   transcribe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout worker
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install transcript client
-        run: pip install youtube-transcript-api
-
-      - name: Fetch transcript from verified YouTube mirror
+      - name: Fetch hosted transcript for verified mirror
         run: |
           mkdir -p results
-          python fetch_youtube_transcript.py
+          curl -fL --retry 2 --connect-timeout 15 --max-time 60 \
+            'https://youtube-transcript.ai/transcript/8mQEzS-DXuE.txt' \
+            -o results/8mQEzS-DXuE.md
+          test -s results/8mQEzS-DXuE.md
 
       - name: Preview transcript
         run: |
           echo '===== TRANSCRIPT PREVIEW ====='
-          sed -n '1,120p' results/*.md
+          sed -n '1,120p' results/8mQEzS-DXuE.md
 
       - name: Upload transcript artifact
         uses: actions/upload-artifact@v4
