@@ -9,41 +9,83 @@ URL = next(
     if line.strip() and not line.lstrip().startswith('#')
 )
 
-api = 'https://api.bugpk.com/api/douyin?' + urllib.parse.urlencode({'url': URL})
-req = urllib.request.Request(api, headers={'User-Agent': 'Mozilla/5.0'})
-with urllib.request.urlopen(req, timeout=60) as r:
-    payload = json.loads(r.read().decode('utf-8'))
+RESOLVERS = [
+    ('bugpk', 'https://api.bugpk.com/api/douyin'),
+    ('mxin', 'https://api.mxin.moe/api/v1/douyin'),
+    ('jxcxin', 'https://apis.jxcxin.cn/api/douyin'),
+    ('777nx', 'https://api.777nx.cn/api/douyin/'),
+]
 
-Path('resolver-response.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
-if payload.get('code') != 200 or not payload.get('data'):
-    raise RuntimeError(f"resolver failed: {payload}")
+UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36'
+OUT = Path('work/source.mp4')
+OUT.parent.mkdir(exist_ok=True)
+logs = []
 
-data = payload['data']
-media = data.get('url')
-if not media:
-    backups = data.get('video_backup') or []
+
+def request_json(base):
+    api = base + ('&' if '?' in base else '?') + urllib.parse.urlencode({'url': URL})
+    req = urllib.request.Request(api, headers={'User-Agent': UA, 'Accept': 'application/json,text/plain,*/*'})
+    with urllib.request.urlopen(req, timeout=45) as r:
+        return json.loads(r.read().decode('utf-8', errors='replace'))
+
+
+def extract_media(name, payload):
+    data = payload.get('data') if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        data = {}
+    candidates = [
+        data.get('url'),
+        data.get('video_url'),
+        data.get('play_url'),
+        payload.get('url') if isinstance(payload, dict) else None,
+    ]
+    backups = data.get('video_backup') or data.get('backup_url') or []
     if isinstance(backups, str):
         backups = [backups]
-    media = backups[0] if backups else None
-if not media:
-    raise RuntimeError(f"resolver returned no video URL: {payload}")
+    if isinstance(backups, list):
+        candidates.extend(backups)
+    for item in candidates:
+        if isinstance(item, str) and item.startswith(('http://', 'https://')):
+            return item
+    return None
 
-print('Resolver title:', data.get('title') or data.get('desc'))
-print('Resolver author:', (data.get('author') or {}).get('name') if isinstance(data.get('author'), dict) else data.get('author'))
-print('Media URL:', media[:180])
 
-Path('work').mkdir(exist_ok=True)
-out = Path('work/source.mp4')
-request = urllib.request.Request(media, headers={
-    'User-Agent': 'Mozilla/5.0',
-    'Referer': 'https://www.douyin.com/'
-})
-with urllib.request.urlopen(request, timeout=120) as r, out.open('wb') as f:
-    while True:
-        chunk = r.read(1024 * 1024)
-        if not chunk:
-            break
-        f.write(chunk)
-print('Downloaded bytes:', out.stat().st_size)
-if out.stat().st_size < 100000:
-    raise RuntimeError('downloaded media is unexpectedly small')
+def download(media):
+    if media.startswith('http://'):
+        media = 'https://' + media[len('http://'):]
+    req = urllib.request.Request(media, headers={
+        'User-Agent': UA,
+        'Referer': 'https://www.douyin.com/',
+        'Accept': '*/*',
+    })
+    if OUT.exists():
+        OUT.unlink()
+    with urllib.request.urlopen(req, timeout=120) as r, OUT.open('wb') as f:
+        while True:
+            chunk = r.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+    return OUT.stat().st_size
+
+
+for name, base in RESOLVERS:
+    try:
+        print(f'Trying resolver: {name}')
+        payload = request_json(base)
+        Path(f'resolver-{name}.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        media = extract_media(name, payload)
+        if not media:
+            raise RuntimeError(f'no media URL in response: {str(payload)[:500]}')
+        print(f'{name} media URL: {media[:180]}')
+        size = download(media)
+        print(f'{name} downloaded bytes: {size}')
+        if size < 100000:
+            raise RuntimeError(f'media unexpectedly small: {size}')
+        print(f'ACQUISITION_OK resolver={name}')
+        break
+    except Exception as e:
+        logs.append(f'{name}: {type(e).__name__}: {e}')
+        print(f'{name} failed: {type(e).__name__}: {e}')
+else:
+    raise RuntimeError('all resolvers failed:\n' + '\n'.join(logs))
