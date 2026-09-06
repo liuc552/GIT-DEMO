@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'urls.txt'
+      - 'resolve_media.py'
       - 'transcribe.py'
       - '.github/workflows/transcribe-one.yml'
   workflow_dispatch:
@@ -27,15 +28,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
-          pip install f2 faster-whisper
+          pip install faster-whisper
 
-      - name: Download one public Douyin video with F2
+      - name: Resolve and download one public Douyin video
         run: |
           mkdir -p work results
-          URL=$(grep -v '^#' urls.txt | sed '/^$/d' | head -n 1)
-          echo "Downloading with F2: $URL"
-          f2 dy -u "$URL" -M one -p work -n '{aweme_id}'
-          find work -type f -maxdepth 4 -printf '%p %s bytes\n' || true
+          python resolve_media.py
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 work/source.mp4
 
       - name: Transcribe
         run: python transcribe.py
