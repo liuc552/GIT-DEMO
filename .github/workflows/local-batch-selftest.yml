@@ -1,0 +1,39 @@
+name: Local Batch Selftest
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'local_batch/**'
+      - 'pipeline/transcribe_media.py'
+      - '.github/workflows/local-batch-selftest.yml'
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile Python
+        run: |
+          python -m py_compile local_batch/batch_worker.py
+          python -m py_compile pipeline/transcribe_media.py
+      - name: Test URL list parsing and stable IDs
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('bw', 'local_batch/batch_worker.py')
+          m = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          p = Path('selftest_urls.txt')
+          p.write_text('# comment\nhttps://www.douyin.com/video/7651868438474057573\nhttps://www.bilibili.com/video/BV1abc123\tDemo\n', encoding='utf-8')
+          items = m.parse_lines(p)
+          assert len(items) == 2, items
+          assert m.stable_id(1, items[0][0]).startswith('001_douyin_7651868438474057573')
+          assert 'bili_BV1abc123' in m.stable_id(2, items[1][0])
+          print('local batch selftest OK')
+          PY
