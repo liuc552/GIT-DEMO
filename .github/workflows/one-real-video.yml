@@ -1,0 +1,62 @@
+name: One Real Zhezhi Video
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'pipeline/acquire_cobalt.py'
+      - 'pipeline/transcribe_media.py'
+      - '.github/workflows/one-real-video.yml'
+  workflow_dispatch:
+
+jobs:
+  transcribe-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install requests faster-whisper
+
+      - name: Acquire one real Zhezhi video through Cobalt
+        run: |
+          mkdir -p work results
+          python pipeline/acquire_cobalt.py 'https://www.youtube.com/watch?v=8mQEzS-DXuE' work/zhezhi-one.media
+          ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type -of json work/zhezhi-one.media
+
+      - name: Transcribe with faster-whisper small
+        run: |
+          python pipeline/transcribe_media.py \
+            --media work/zhezhi-one.media \
+            --source-url 'https://jingxuan.douyin.com/m/video/7651868438474057573' \
+            --title '中中避战开野区思维讲解｜王者荣耀折纸' \
+            --id '7651868438474057573' \
+            --model small \
+            --language zh
+
+      - name: Preview real transcript
+        run: |
+          echo '===== REAL TRANSCRIPT PREVIEW ====='
+          sed -n '1,160p' results/7651868438474057573.md
+
+      - name: Upload transcript only
+        uses: actions/upload-artifact@v4
+        with:
+          name: zhezhi-real-video-7651868438474057573
+          path: |
+            results/7651868438474057573.txt
+            results/7651868438474057573.md
+            results/7651868438474057573.jsonl
+            work/acquisition.json
+          retention-days: 7
