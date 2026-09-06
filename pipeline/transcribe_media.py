@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -43,15 +44,29 @@ def download_direct(url: str, out_dir: Path) -> Path:
 
 
 def probe_audio(path: Path) -> None:
-    proc = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "json", str(path)],
-        text=True, capture_output=True,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffprobe failed: {proc.stderr.strip()[-500:]}")
-    data = json.loads(proc.stdout or "{}")
-    if not data.get("streams"):
-        raise RuntimeError("media contains no audio stream")
+    """Verify that media contains audio without requiring a system ffmpeg install."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        proc = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "json", str(path)],
+            text=True, capture_output=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffprobe failed: {proc.stderr.strip()[-500:]}")
+        data = json.loads(proc.stdout or "{}")
+        if not data.get("streams"):
+            raise RuntimeError("media contains no audio stream")
+        return
+
+    import av
+    try:
+        with av.open(str(path)) as container:
+            if not any(stream.type == "audio" for stream in container.streams):
+                raise RuntimeError("media contains no audio stream")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"cannot inspect media audio stream: {exc}") from exc
 
 
 def sha256(path: Path) -> str:
