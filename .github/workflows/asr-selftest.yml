@@ -1,0 +1,52 @@
+name: ASR Selftest
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'pipeline/transcribe_media.py'
+      - '.github/workflows/asr-selftest.yml'
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg espeak-ng
+          python -m pip install --upgrade pip
+          pip install faster-whisper
+
+      - name: Generate known speech fixture
+        run: |
+          mkdir -p fixtures
+          espeak-ng -v en-us -s 145 -w fixtures/selftest.wav 'GitHub Actions transcription worker is running correctly.'
+          ffprobe -v error -select_streams a -show_entries stream=codec_name -of json fixtures/selftest.wav
+
+      - name: Run ASR without any acquisition adapter
+        run: |
+          python pipeline/transcribe_media.py \
+            --media fixtures/selftest.wav \
+            --source-url selftest://generated \
+            --title 'ASR self test' \
+            --id asr-selftest \
+            --model tiny \
+            --language en
+          cat results/asr-selftest.txt
+          test -s results/asr-selftest.jsonl
+          test -s results/asr-selftest.md
+
+      - name: Upload selftest result
+        uses: actions/upload-artifact@v4
+        with:
+          name: asr-selftest-result
+          path: results/
+          retention-days: 1

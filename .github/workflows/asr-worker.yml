@@ -1,0 +1,115 @@
+name: ASR Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      media_url:
+        description: Direct downloadable media URL; leave empty when consuming a handoff artifact
+        required: false
+        default: ''
+        type: string
+      source_url:
+        description: Original source page URL
+        required: false
+        default: ''
+        type: string
+      title:
+        description: Optional title
+        required: false
+        default: ''
+        type: string
+      media_id:
+        description: Stable media id
+        required: true
+        default: sample
+        type: string
+      model:
+        description: faster-whisper model
+        required: true
+        default: small
+        type: choice
+        options:
+          - tiny
+          - base
+          - small
+          - medium
+          - large-v3
+  workflow_run:
+    workflows: ['Acquire Media']
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  transcribe:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ASR dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install faster-whisper
+
+      - name: Download acquisition handoff
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          rm -rf handoff
+          mkdir -p handoff
+          gh run download "$RUN_ID" -n media-handoff -D handoff
+          test -s handoff/manifest.json
+          ls -lh handoff
+
+      - name: Transcribe handoff media
+        if: github.event_name == 'workflow_run'
+        run: |
+          python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          m=json.loads(Path('handoff/manifest.json').read_text(encoding='utf-8'))
+          media=Path('handoff')/m['media_file']
+          cmd=['python','pipeline/transcribe_media.py','--media',str(media),
+               '--source-url',m.get('source_url',''),'--title',m.get('title',''),
+               '--id',m.get('id','media'),'--model','small','--language','zh']
+          subprocess.run(cmd, check=True)
+          PY
+
+      - name: Transcribe direct media URL
+        if: github.event_name == 'workflow_dispatch' && inputs.media_url != ''
+        run: |
+          python pipeline/transcribe_media.py \
+            --media-url '${{ inputs.media_url }}' \
+            --source-url '${{ inputs.source_url }}' \
+            --title '${{ inputs.title }}' \
+            --id '${{ inputs.media_id }}' \
+            --model '${{ inputs.model }}' \
+            --language zh
+
+      - name: Require result
+        run: |
+          test -d results
+          find results -type f -maxdepth 1 -print
+          test "$(find results -type f | wc -l)" -ge 3
+
+      - name: Upload transcript corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript-corpus
+          path: results/
+          retention-days: 7
